@@ -10,13 +10,12 @@ Una aplicación web moderna para crear, previsualizar y descargar facturas profe
 ## ✨ Características principales
 - **Formulario simple y profesional** para cargar datos de empresa, cliente y productos/servicios.
 - **Vista previa en modal**: revisá tu factura antes de descargarla.
-- **Descarga en PDF**: el PDF ocupa toda la hoja A4, con formato profesional.
+- **Descarga en PDF**: PDF formato A4, con formato profesional.
 - **Soporte ARS**: moneda fija en pesos argentinos.
 - **IVA configurable** (por defecto 21%).
 - **Generación automática de número de factura**.
 - **Diseño responsivo**: usable y legible en cualquier dispositivo.
-- **No expone HTML**: usa Node.js/Express y EJS para mayor seguridad.
-- **Favicon personalizado**.
+- **Compatibilidad con navegadores modernos**: Chrome, Firefox, Edge, Safari.
 
 ## 🖥️ ¿Cómo lo uso?
 
