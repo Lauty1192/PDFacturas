@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Facturas - Argentina</title>
+    <link rel="stylesheet" href="/public/styles.css">
+    <link rel="icon" type="image/svg+xml" href="/public/favicon.svg">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Generador de Facturas</h1>
+            <p>Crea facturas profesionales en Argentina de manera rápida y sencilla</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Formulario de datos -->
+            <div class="form-section">
+                <h2>Datos de la Factura</h2>
+                
+                <div class="form-group">
+                    <h3>Información de la Empresa</h3>
+                    <div class="row">
+                        <div class="col">
+                            <label for="company-name">Nombre de la Empresa *</label>
+                            <input type="text" id="company-name" required>
+                        </div>
+                        <div class="col">
+                            <label for="company-email">Email</label>
+                            <input type="email" id="company-email">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <label for="company-phone">Teléfono</label>
+                            <input type="tel" id="company-phone">
+                        </div>
+                        <div class="col">
+                            <label for="company-tax-id">CUIT</label>
+                            <input type="text" id="company-tax-id" placeholder="XX-XXXXXXXX-X">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-full">
+                            <label for="company-address">Dirección</label>
+                            <textarea id="company-address" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <h3>Información del Cliente</h3>
+                    <div class="row">
+                        <div class="col">
+                            <label for="client-name">Nombre del Cliente *</label>
+                            <input type="text" id="client-name" required>
+                        </div>
+                        <div class="col">
+                            <label for="client-email">Email</label>
+                            <input type="email" id="client-email">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <label for="client-phone">Teléfono</label>
+                            <input type="tel" id="client-phone">
+                        </div>
+                        <div class="col">
+                            <label for="client-tax-id">CUIT/CUIL/DNI</label>
+                            <input type="text" id="client-tax-id" placeholder="XX-XXXXXXXX-X o DNI">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-full">
+                            <label for="client-address">Dirección</label>
+                            <textarea id="client-address" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <h3>Detalles de la Factura</h3>
+                    <div class="row">
+                        <div class="col">
+                            <label for="invoice-date">Fecha</label>
+                            <input type="date" id="invoice-date">
+                        </div>
+                        <div class="col">
+                            <label for="due-date">Fecha de Vencimiento</label>
+                            <input type="date" id="due-date">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <label for="tax-rate">IVA (%)</label>
+                            <input type="number" id="tax-rate" value="21" step="0.01" min="0">
+                        </div>
+                        <div class="col">
+                            <label for="discount">Descuento (%)</label>
+                            <input type="number" id="discount" value="0" step="0.01" min="0">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <h3>Artículos/Servicios</h3>
+                    <div class="items-header">
+                        <span>Descripción</span>
+                        <span>Cantidad</span>
+                        <span>Precio</span>
+                        <span>Total</span>
+                        <span></span>
+                    </div>
+                    <div id="items-container">
+                        <div class="item-row">
+                            <input type="text" class="item-description" placeholder="Descripción del producto/servicio">
+                            <input type="number" class="item-quantity" value="1" min="1">
+                            <input type="number" class="item-price" step="0.01" min="0" placeholder="0.00">
+                            <span class="item-total">$ 0,00</span>
+                            <button type="button" class="remove-item" onclick="removeItem(this)">×</button>
+                        </div>
+                    </div>
+                    <button type="button" class="add-item-btn" onclick="addItem()">+ Agregar Artículo</button>
+                    
+                    <div class="row" style="margin-top: 15px;">
+                        <div class="col-full">
+                            <label for="notes">Notas/Términos</label>
+                            <textarea id="notes" rows="2" placeholder="Términos y condiciones, notas adicionales..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="clearForm()">Limpiar</button>
+                    <button type="button" class="btn btn-primary" onclick="openPreviewPopup()">Vista Previa</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="modal-preview" class="modal-preview" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="modal-title">Vista Previa de la Factura</span>
+                    <button class="modal-close" onclick="closePreviewModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="invoice-preview" id="invoice-preview-modal"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closePreviewModal()">Cerrar</button>
+                    <button class="btn btn-success" onclick="downloadPDF(true)">Descargar PDF</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/public/script.js"></script>
+</body>
+</html>
