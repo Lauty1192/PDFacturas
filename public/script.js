@@ -1,6 +1,28 @@
 // Variables globales
-let invoiceData = {};
+let quoteData = {};
 let itemsData = [];
+
+// Previsualización y almacenamiento del logo en base64
+function previewLogo(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        document.getElementById('logo-preview').innerHTML = `<img src="${e.target.result}" style="max-width:180px; max-height:80px; object-fit:contain; border-radius:8px; box-shadow:0 2px 8px #0001;">`;
+        // Guardar en localStorage para persistencia temporal
+        localStorage.setItem('companyLogo', e.target.result);
+        // Actualizar el valor en el input hidden para que collectFormData lo tome
+        let hiddenLogo = document.getElementById('company-logo-base64');
+        if (!hiddenLogo) {
+            hiddenLogo = document.createElement('input');
+            hiddenLogo.type = 'hidden';
+            hiddenLogo.id = 'company-logo-base64';
+            document.body.appendChild(hiddenLogo);
+        }
+        hiddenLogo.value = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
 
 // Inicialización
 document.addEventListener('DOMContentLoaded', function() {
@@ -8,20 +30,43 @@ document.addEventListener('DOMContentLoaded', function() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('invoice-date').value = today;
     
-    // Establecer fecha de vencimiento (30 días después)
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 30);
-    document.getElementById('due-date').value = dueDate.toISOString().split('T')[0];
+    // Establecer fecha de validez (30 días después)
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + 30);
+    document.getElementById('due-date').value = validUntil.toISOString().split('T')[0];
     
-    // Generar número de factura automático
-    window.generatedInvoiceNumber = generateInvoiceNumber();
+    // Generar número de presupuesto automático
+    window.generatedQuoteNumber = generateQuoteNumber();
     
     // Añadir event listeners para cálculos automáticos
     addCalculationListeners();
+    
+    // Restaurar logo si existe
+    const logo = localStorage.getItem('companyLogo');
+    if (logo) {
+        document.getElementById('logo-preview').innerHTML = `<img src="${logo}" style="max-width:180px; max-height:80px; object-fit:contain; border-radius:8px; box-shadow:0 2px 8px #0001;">`;
+    }
+    
+    // Esperar a que el DOM esté completamente listo antes de agregar el event listener al input de logo
+    function addLogoInputListener() {
+        const logoInput = document.getElementById('company-logo');
+        if (logoInput) {
+            logoInput.addEventListener('change', previewLogo);
+        } else {
+            console.error('No se encontró el input company-logo (timeout)');
+        }
+    }
+    setTimeout(addLogoInputListener, 500);
+    
+    // Asegurar que al cargar la página, si no hay logo en localStorage, tampoco se muestre en preview
+    const logoPreview = document.getElementById('logo-preview');
+    if (logoPreview) {
+        logoPreview.innerHTML = '';
+    }
 });
 
-// Generar número de factura automático de 7 dígitos
-function generateInvoiceNumber() {
+// Generar número de presupuesto automático de 7 dígitos
+function generateQuoteNumber() {
     return Math.floor(1000000 + Math.random() * 9000000).toString();
 }
 
@@ -46,7 +91,7 @@ function addItem() {
     itemRow.className = 'item-row';
     
     itemRow.innerHTML = `
-        <input type="text" class="item-description" placeholder="Descripción del producto/servicio">
+        <input type="text" class="item-description" placeholder="Artículo">
         <input type="number" class="item-quantity" value="1" min="1">
         <input type="number" class="item-price" step="0.01" min="0" placeholder="0.00">
         <span class="item-total">$ 0,00</span>
@@ -73,7 +118,7 @@ function removeItem(button) {
         itemRow.remove();
         updateAllCalculations();
     } else {
-        alert('Debe haber al menos un artículo en la factura.');
+        alert('Debe haber al menos un artículo en el presupuesto.');
     }
 }
 
@@ -90,27 +135,15 @@ function calculateItemTotal(itemRow) {
 // Actualizar todos los cálculos
 function updateAllCalculations() {
     const itemRows = document.querySelectorAll('.item-row');
-    let subtotal = 0;
+    let total = 0;
     
     itemRows.forEach(row => {
         const quantity = parseFloat(row.querySelector('.item-quantity').value) || 0;
         const price = parseFloat(row.querySelector('.item-price').value) || 0;
-        subtotal += quantity * price;
+        total += quantity * price;
     });
     
-    const discountRate = parseFloat(document.getElementById('discount').value) || 0;
-    const taxRate = parseFloat(document.getElementById('tax-rate').value) || 0;
-    
-    const discountAmount = (subtotal * discountRate) / 100;
-    const subtotalAfterDiscount = subtotal - discountAmount;
-    const taxAmount = (subtotalAfterDiscount * taxRate) / 100;
-    const total = subtotalAfterDiscount + taxAmount;
-    
     return {
-        subtotal,
-        discountAmount,
-        subtotalAfterDiscount,
-        taxAmount,
         total
     };
 }
@@ -132,27 +165,35 @@ function clearForm() {
                 field.value = '';
             }
         });
-        
         // Resetear items
         const container = document.getElementById('items-container');
         container.innerHTML = `
             <div class="item-row">
-                <input type="text" class="item-description" placeholder="Descripción del producto/servicio">
+                <input type="text" class="item-description" placeholder="Artículo">
                 <input type="number" class="item-quantity" value="1" min="1">
                 <input type="number" class="item-price" step="0.01" min="0" placeholder="0.00">
                 <span class="item-total">$ 0,00</span>
                 <button type="button" class="remove-item" onclick="removeItem(this)">×</button>
             </div>
         `;
-        
-        // Generar nuevo número de factura
-        window.generatedInvoiceNumber = generateInvoiceNumber();
-        
+        // Generar nuevo número de presupuesto
+        window.generatedQuoteNumber = generateQuoteNumber();
         // Ocultar vista previa
         const previewSection = document.getElementById('preview-section');
         if (previewSection) {
             previewSection.style.display = 'none';
         }
+        // Limpiar logo
+        localStorage.removeItem('companyLogo');
+        document.getElementById('logo-preview').innerHTML = '';
+        // Limpiar input file
+        const logoInput = document.getElementById('company-logo');
+        if (logoInput) logoInput.value = '';
+        // Limpiar input hidden
+        const hiddenLogo = document.getElementById('company-logo-base64');
+        if (hiddenLogo) hiddenLogo.value = '';
+        // Volver a agregar el event listener al input de logo
+        setTimeout(addLogoInputListener, 200);
     }
 }
 
@@ -177,9 +218,20 @@ function collectFormData() {
         }
     });
     
+    // Tomar logo del input hidden si existe, si no de localStorage
+    let logo = '';
+    const hiddenLogo = document.getElementById('company-logo-base64');
+    if (hiddenLogo && hiddenLogo.value) {
+        logo = hiddenLogo.value;
+    } else {
+        logo = localStorage.getItem('companyLogo') || '';
+    }
+    
     return {
         company: {
             name: document.getElementById('company-name').value,
+            slogan: document.getElementById('company-slogan').value,
+            logo: logo,
             email: document.getElementById('company-email').value,
             phone: document.getElementById('company-phone').value,
             taxId: document.getElementById('company-tax-id').value,
@@ -193,15 +245,13 @@ function collectFormData() {
             address: document.getElementById('client-address').value
         },
         invoice: {
-            number: window.generatedInvoiceNumber,
+            number: window.generatedQuoteNumber,
             date: document.getElementById('invoice-date').value,
             dueDate: document.getElementById('due-date').value,
             currency: 'ARS'
         },
         items: items,
         calculations: calculations,
-        taxRate: parseFloat(document.getElementById('tax-rate').value) || 0,
-        discountRate: parseFloat(document.getElementById('discount').value) || 0,
         notes: document.getElementById('notes').value
     };
 }
@@ -209,8 +259,7 @@ function collectFormData() {
 // Validar datos requeridos
 function validateRequiredFields() {
     const requiredFields = [
-        'company-name',
-        'client-name'
+        'company-name'
     ];
     
     const errors = [];
@@ -238,8 +287,8 @@ function openPreviewPopup() {
         alert('Por favor, complete los siguientes campos requeridos:\n\n' + errors.join('\n'));
         return;
     }
-    invoiceData = collectFormData();
-    const previewHtml = generateInvoiceHTML(invoiceData, true); // true = responsivo para vista previa
+    quoteData = collectFormData();
+    const previewHtml = generateInvoiceHTML(quoteData, true); // true = responsivo para vista previa
     document.getElementById('invoice-preview-modal').innerHTML = previewHtml;
     document.getElementById('modal-preview').style.display = 'flex';
     document.body.style.overflow = 'hidden';
@@ -251,7 +300,7 @@ function closePreviewModal() {
     document.body.style.overflow = '';
 }
 
-// Generar HTML de la factura
+// Generar HTML del presupuesto
 function generateInvoiceHTML(data, isPreview = false) {
     const formatDate = (dateStr) => {
         if (!dateStr) return '';
@@ -307,12 +356,39 @@ function generateInvoiceHTML(data, isPreview = false) {
         `;
     });
     
+    // Información del cliente solo si hay algún dato
+    let clientInfoHtml = '';
+    if (
+        data.client.name ||
+        data.client.email ||
+        data.client.phone ||
+        data.client.taxId ||
+        data.client.address
+    ) {
+        clientInfoHtml = `
+            <div style="margin: 0 40px 30px 40px;">
+                <div style="background-color: #f8f9fc; padding: ${isMobile ? '12px' : '25px'}; border-radius: 10px; border-left: 6px solid #2c5aa0;">
+                    <h3 style="margin: 0 0 18px 0; color: #2c5aa0; font-size: ${isMobile ? '0.9rem' : '1.3rem'};">PRESUPUESTAR A:</h3>
+                    <div style="font-size: ${isMobile ? '0.85rem' : '1.1rem'}; line-height: 1.6;">
+                        <div style="font-weight: bold; font-size: ${isMobile ? '0.95rem' : '1.3rem'}; margin-bottom: 10px;">${data.client.name}</div>
+                        ${data.client.email ? `<div style="margin-bottom: 5px;"><strong>Email:</strong> ${data.client.email}</div>` : ''}
+                        ${data.client.phone ? `<div style="margin-bottom: 5px;"><strong>Teléfono:</strong> ${data.client.phone}</div>` : ''}
+                        ${data.client.taxId ? `<div style="margin-bottom: 5px;"><strong>CUIT/CUIL/DNI:</strong> ${data.client.taxId}</div>` : ''}
+                        ${data.client.address ? `<div style="margin-bottom: 5px;"><strong>Dirección:</strong> ${data.client.address.replace(/\n/g, '<br>')}</div>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    const logoHtml = data.company.logo ? `<img src="${data.company.logo}" style="max-width:220px; max-height:90px; object-fit:contain; display:block; margin-bottom:10px;">` : `<div style="font-size: 3.5rem; font-weight: bold; color: #2c5aa0; margin-bottom: 8px;">PRESUPUESTO</div>`;
+    
     return `
         <div style="${containerStyle}">
             <!-- Header profesional -->
             <div style="${headerStyle}">
                 <div>
-                    <div style="${titleStyle}">FACTURA</div>
+                    ${logoHtml}
                     <div style="font-size: 1rem; color: #666; margin-bottom: 10px; ${isMobile ? 'text-align: center;' : ''}">#${data.invoice.number}</div>
                     <div style="font-size: 0.85rem; color: #666; ${isMobile ? 'text-align: center;' : ''}">
                         <strong>Fecha de Emisión:</strong> ${formatDate(data.invoice.date)}<br>
@@ -323,6 +399,7 @@ function generateInvoiceHTML(data, isPreview = false) {
                     <div style="font-size: 1.2rem; font-weight: bold; color: #2c5aa0; margin-bottom: 5px;">
                         ${data.company.name}
                     </div>
+                    ${data.company.slogan ? `<div style="font-size: 1rem; color: #888; margin-bottom: 8px; font-style: italic;">${data.company.slogan}</div>` : ''}
                     <div style="font-size: 0.85rem; color: #666; line-height: 1.4;">
                         ${data.company.email ? `${data.company.email}<br>` : ''}
                         ${data.company.phone ? `${data.company.phone}<br>` : ''}
@@ -331,26 +408,12 @@ function generateInvoiceHTML(data, isPreview = false) {
                     </div>
                 </div>
             </div>
-            
-            <!-- Información del cliente -->
-            <div style="margin: 0 40px 30px 40px;">
-                <div style="background-color: #f8f9fc; padding: ${isMobile ? '12px' : '25px'}; border-radius: 10px; border-left: 6px solid #2c5aa0;">
-                    <h3 style="margin: 0 0 18px 0; color: #2c5aa0; font-size: ${isMobile ? '0.9rem' : '1.3rem'};">FACTURAR A:</h3>
-                    <div style="font-size: ${isMobile ? '0.85rem' : '1.1rem'}; line-height: 1.6;">
-                        <div style="font-weight: bold; font-size: ${isMobile ? '0.95rem' : '1.3rem'}; margin-bottom: 10px;">${data.client.name}</div>
-                        ${data.client.email ? `<div style="margin-bottom: 5px;"><strong>Email:</strong> ${data.client.email}</div>` : ''}
-                        ${data.client.phone ? `<div style="margin-bottom: 5px;"><strong>Teléfono:</strong> ${data.client.phone}</div>` : ''}
-                        ${data.client.taxId ? `<div style="margin-bottom: 5px;"><strong>CUIT/CUIL/DNI:</strong> ${data.client.taxId}</div>` : ''}
-                        ${data.client.address ? `<div style="margin-bottom: 5px;"><strong>Dirección:</strong> ${data.client.address.replace(/\n/g, '<br>')}</div>` : ''}
-                    </div>
-                </div>
-            </div>
-            
+            ${clientInfoHtml}
             <!-- Tabla de artículos -->
             <table style="${tableStyle}">
                 <thead>
                     <tr style="background: linear-gradient(135deg, #2c5aa0 0%, #1e3d6c 100%); color: white;">
-                        <th style="${thStyle}">Descripción</th>
+                        <th style="${thStyle}">Artículo</th>
                         <th style="${thStyle} text-align: center; ${isMobile ? 'width: 50px;' : 'width: 80px;'}">Cant.</th>
                         <th style="${thStyle} text-align: right; ${isMobile ? 'width: 70px;' : 'width: 120px;'}">Precio</th>
                         <th style="${thStyle} text-align: right; ${isMobile ? 'width: 70px;' : 'width: 120px;'}">Total</th>
@@ -365,21 +428,9 @@ function generateInvoiceHTML(data, isPreview = false) {
             <div style="${totalsStyle}">
                 <div style="background-color: #f8f9fc; padding: ${isMobile ? '12px' : '25px'}; border-radius: 10px; border: 2px solid #e1e8ed;">
                     <div style="display: flex; justify-content: space-between; padding: ${isMobile ? '6px 0' : '12px 0'}; border-bottom: 1px solid #e1e8ed; font-size: ${isMobile ? '0.8rem' : '1.1rem'};">
-                        <span>Subtotal:</span>
-                        <span style="font-weight: 500;">${formatCurrency(data.calculations.subtotal, currency)}</span>
+                        <span>Total:</span>
+                        <span style="font-weight: 500;">${formatCurrency(data.calculations.total, currency)}</span>
                     </div>
-                    ${data.discountRate > 0 ? `
-                        <div style="display: flex; justify-content: space-between; padding: ${isMobile ? '6px 0' : '12px 0'}; border-bottom: 1px solid #e1e8ed; color: #e74c3c; font-size: ${isMobile ? '0.8rem' : '1.1rem'};">
-                            <span>Descuento (${data.discountRate}%):</span>
-                            <span style="font-weight: 500;">-${formatCurrency(data.calculations.discountAmount, currency)}</span>
-                        </div>
-                    ` : ''}
-                    ${data.taxRate > 0 ? `
-                        <div style="display: flex; justify-content: space-between; padding: ${isMobile ? '6px 0' : '12px 0'}; border-bottom: 1px solid #e1e8ed; font-size: ${isMobile ? '0.8rem' : '1.1rem'};">
-                            <span>IVA (${data.taxRate}%):</span>
-                            <span style="font-weight: 500;">${formatCurrency(data.calculations.taxAmount, currency)}</span>
-                        </div>
-                    ` : ''}
                     <div style="display: flex; justify-content: space-between; padding: ${isMobile ? '10px 0 3px 0' : '18px 0 8px 0'}; border-top: 3px solid #2c5aa0; margin-top: ${isMobile ? '8px' : '15px'}; font-weight: bold; font-size: ${isMobile ? '1rem' : '1.5rem'}; color: #2c5aa0;">
                         <span>TOTAL:</span>
                         <span>${formatCurrency(data.calculations.total, currency)}</span>
@@ -398,8 +449,8 @@ function generateInvoiceHTML(data, isPreview = false) {
             
             <!-- Footer profesional -->
             <div style="position: ${isMobile ? 'static' : 'absolute'}; bottom: ${isMobile ? 'auto' : '40px'}; left: ${isMobile ? 'auto' : '40px'}; right: ${isMobile ? 'auto' : '40px'}; margin-top: ${isMobile ? '25px' : '0'}; padding-top: ${isMobile ? '15px' : '30px'}; border-top: 2px solid #e1e8ed; text-align: center; color: #888; font-size: ${isMobile ? '0.65rem' : '0.9rem'};">
-                <p style="margin: ${isMobile ? '3px 0' : '10px 0'};">Factura generada el ${new Date().toLocaleDateString('es-AR')}</p>
-                <p style="margin: ${isMobile ? '3px 0' : '10px 0'};">Este documento es válido como comprobante de venta</p>
+                <p style="margin: ${isMobile ? '3px 0' : '10px 0'};">Presupuesto generado el ${new Date().toLocaleDateString('es-AR')}</p>
+                <p style="margin: ${isMobile ? '3px 0' : '10px 0'};">Este documento es válido como presupuesto</p>
             </div>
         </div>
     `;
@@ -422,7 +473,7 @@ async function downloadPDF(fromModal = false) {
         
         // Crear un elemento temporal para generar el PDF con formato de escritorio
         const tempElement = document.createElement('div');
-        tempElement.innerHTML = generateInvoiceHTML(invoiceData, false); // false = formato de escritorio
+        tempElement.innerHTML = generateInvoiceHTML(quoteData, false); // false = formato de escritorio
         tempElement.style.position = 'absolute';
         tempElement.style.left = '-9999px';
         tempElement.style.top = '0';
@@ -485,13 +536,13 @@ async function downloadPDF(fromModal = false) {
             'FAST'
         );
         pdf.setProperties({
-            title: `Factura ${invoiceData.invoice.number}`,
-            subject: `Factura para ${invoiceData.client.name}`,
-            author: invoiceData.company.name,
-            creator: 'Generador de Facturas Argentina',
-            producer: 'Generador de Facturas Argentina'
+            title: `Presupuesto ${quoteData.invoice.number}`,
+            subject: `Presupuesto para ${quoteData.client.name}`,
+            author: quoteData.company.name,
+            creator: 'Generador de Presupuestos Argentina',
+            producer: 'Generador de Presupuestos Argentina'
         });
-        const fileName = `Factura_${invoiceData.invoice.number}_${invoiceData.client.name.replace(/\s+/g, '_')}.pdf`;
+        const fileName = `Presupuesto_${quoteData.invoice.number}_${quoteData.client.name.replace(/\s+/g, '_')}.pdf`;
         
         // Detectar si es móvil para manejar la descarga de manera diferente
         const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -638,8 +689,8 @@ function handleMobileDownload(pdf, fileName) {
                             <body>
                                 <div class="container">
                                     <div class="download-header">
-                                        <h2>📄 Factura Generada</h2>
-                                        <p>Tu factura ${fileName.replace(/\.pdf$/, '')} está lista</p>
+                                        <h2>📄 Presupuesto Generado</h2>
+                                        <p>Tu presupuesto ${fileName.replace(/\.pdf$/, '')} está listo</p>
                                     </div>
                                     
                                     <div style="text-align: center;">
@@ -672,4 +723,15 @@ function handleMobileDownload(pdf, fileName) {
             }
         }
     }
+}
+
+// Botón para quitar el logo manualmente
+function removeLogo() {
+    localStorage.removeItem('companyLogo');
+    const logoPreview = document.getElementById('logo-preview');
+    if (logoPreview) logoPreview.innerHTML = '';
+    const logoInput = document.getElementById('company-logo');
+    if (logoInput) logoInput.value = '';
+    const hiddenLogo = document.getElementById('company-logo-base64');
+    if (hiddenLogo) hiddenLogo.value = '';
 }
