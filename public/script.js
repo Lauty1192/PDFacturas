@@ -281,6 +281,7 @@ function validateRequiredFields() {
 }
 
 // Abrir vista previa en ventana emergente
+// Vista previa en PDF real usando jsPDF + autoTable
 function openPreviewPopup() {
     const errors = validateRequiredFields();
     if (errors.length > 0) {
@@ -288,8 +289,117 @@ function openPreviewPopup() {
         return;
     }
     quoteData = collectFormData();
-    const previewHtml = generateInvoiceHTML(quoteData, true); // true = responsivo para vista previa
-    document.getElementById('invoice-preview-modal').innerHTML = previewHtml;
+    if (!window.jsPDF || !window.jsPDF.API || !window.jsPDF.API.autoTable) {
+        alert('Error: Falta la librería autoTable de jsPDF.');
+        return;
+    }
+    // Generar el PDF en memoria (misma lógica que downloadPDF)
+    const doc = new window.jsPDF({ unit: 'mm', format: 'a4' });
+    // --- Copia aquí la lógica de generación de PDF igual a downloadPDF ---
+    // Logo
+    let y = 20;
+    if (quoteData.company.logo) {
+        try {
+            const imgProps = doc.getImageProperties(quoteData.company.logo);
+            const imgWidth = 50;
+            const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+            doc.addImage(quoteData.company.logo, 'PNG', 20, y, imgWidth, imgHeight);
+            y += imgHeight + 2;
+        } catch (e) { y += 2; }
+    }
+    doc.setFontSize(18);
+    doc.setTextColor('#2c5aa0');
+    doc.text('PRESUPUESTO', 80, 20, { align: 'left' });
+    doc.setFontSize(10);
+    doc.setTextColor('#333');
+    doc.text(`#${quoteData.invoice.number}`, 80, 27);
+    doc.text(`Fecha de Emisión: ${quoteData.invoice.date}`, 80, 33);
+    if (quoteData.invoice.dueDate) doc.text(`Fecha de Vencimiento: ${quoteData.invoice.dueDate}`, 80, 39);
+    y = Math.max(y, 45);
+    // Empresa (izquierda)
+    let empresaY = y;
+    let clienteY = y;
+    doc.setFontSize(12);
+    doc.setTextColor('#2c5aa0');
+    doc.text(quoteData.company.name, 20, empresaY);
+    empresaY += 6;
+    if (quoteData.company.slogan) {
+        doc.setFontSize(10);
+        doc.setTextColor('#888');
+        doc.text(quoteData.company.slogan, 20, empresaY);
+        empresaY += 5;
+    }
+    doc.setFontSize(10);
+    doc.setTextColor('#333');
+    if (quoteData.company.email) { doc.text(`Email: ${quoteData.company.email}`, 20, empresaY); empresaY += 5; }
+    if (quoteData.company.phone) { doc.text(`Tel: ${quoteData.company.phone}`, 20, empresaY); empresaY += 5; }
+    if (quoteData.company.taxId) { doc.text(`CUIT: ${quoteData.company.taxId}`, 20, empresaY); empresaY += 5; }
+    if (quoteData.company.address) { doc.text(`Dirección: ${quoteData.company.address}`, 20, empresaY); empresaY += 5; }
+    // Cliente (derecha)
+    if (quoteData.client.name || quoteData.client.email || quoteData.client.phone || quoteData.client.taxId || quoteData.client.address) {
+        doc.setFontSize(11);
+        doc.setTextColor('#2c5aa0');
+        doc.text('PRESUPUESTAR A:', 120, y);
+        clienteY = y + 6;
+        doc.setFontSize(10);
+        doc.setTextColor('#333');
+        if (quoteData.client.name) { doc.text(quoteData.client.name, 120, clienteY); clienteY += 5; }
+        if (quoteData.client.email) { doc.text(`Email: ${quoteData.client.email}`, 120, clienteY); clienteY += 5; }
+        if (quoteData.client.phone) { doc.text(`Tel: ${quoteData.client.phone}`, 120, clienteY); clienteY += 5; }
+        if (quoteData.client.taxId) { doc.text(`CUIT/CUIL/DNI: ${quoteData.client.taxId}`, 120, clienteY); clienteY += 5; }
+        if (quoteData.client.address) { doc.text(`Dirección: ${quoteData.client.address}`, 120, clienteY); clienteY += 5; }
+    }
+    y = Math.max(empresaY, clienteY) + 2;
+    const columns = [
+        { header: 'Artículo', dataKey: 'description' },
+        { header: 'Cant.', dataKey: 'quantity' },
+        { header: 'Precio', dataKey: 'price' },
+        { header: 'Total', dataKey: 'total' }
+    ];
+    const rows = quoteData.items.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        price: item.price.toLocaleString('es-AR', { minimumFractionDigits: 2 }),
+        total: item.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })
+    }));
+    doc.autoTable({
+        startY: y,
+        head: [columns.map(col => col.header)],
+        body: rows.map(row => columns.map(col => row[col.dataKey])),
+        styles: { fontSize: 10, cellPadding: 2 },
+        headStyles: { fillColor: [44, 90, 160], textColor: 255 },
+        theme: 'grid',
+        margin: { left: 20, right: 20 },
+        didDrawPage: function (data) {
+            const pageHeight = doc.internal.pageSize.height;
+            doc.setDrawColor(225, 232, 237);
+            doc.setLineWidth(0.5);
+            doc.line(20, pageHeight - 30, 190, pageHeight - 30);
+            doc.setFontSize(9);
+            doc.setTextColor('#888');
+            doc.text(`Presupuesto generado el ${new Date().toLocaleDateString('es-AR')}`, 105, pageHeight - 22, { align: 'center' });
+            doc.text('Este documento es válido como presupuesto', 105, pageHeight - 15, { align: 'center' });
+        }
+    });
+    let finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(12);
+    doc.setTextColor('#2c5aa0');
+    doc.text('TOTAL:', 140, finalY, { align: 'left' });
+    doc.setFontSize(12);
+    doc.setTextColor('#333');
+    doc.text(`${formatCurrency(quoteData.calculations.total, 'ARS')}`, 190, finalY, { align: 'right' });
+    if (quoteData.notes) {
+        doc.setFontSize(10);
+        doc.setTextColor('#2c5aa0');
+        doc.text('Notas y Términos:', 20, finalY + 10);
+        doc.setFontSize(9);
+        doc.setTextColor('#555');
+        doc.text(quoteData.notes, 20, finalY + 15, { maxWidth: 170 });
+    }
+    // Mostrar PDF en vista previa
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    document.getElementById('invoice-preview-modal').innerHTML = `<iframe src="${pdfUrl}" style="width:100%;height:80vh;border:none;"></iframe>`;
     document.getElementById('modal-preview').style.display = 'flex';
     document.body.style.overflow = 'hidden';
 }
@@ -314,7 +424,8 @@ function generateInvoiceHTML(data, isPreview = false) {
     const isMobile = isPreview && window.innerWidth <= 600;
     const containerStyle = isMobile ? 
         "max-width: 100vw; margin: 0; padding: 15px; font-family: 'Arial', sans-serif; color: #333; background: white;" :
-        "width: 800px; height: 1131px; margin: 0 auto; padding: 0; font-family: 'Arial', sans-serif; color: #333; background: white; box-sizing: border-box; position: relative;";
+        // Quitar height fijo y agregar padding-bottom para evitar superposición
+        "width: 800px; margin: 0 auto; padding: 0 0 120px 0; font-family: 'Arial', sans-serif; color: #333; background: white; box-sizing: border-box; position: relative; min-height: 1131px;";
     
     const headerStyle = isMobile ?
         "display: block; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 3px solid #2c5aa0;" :
@@ -448,7 +559,7 @@ function generateInvoiceHTML(data, isPreview = false) {
             ` : ''}
             
             <!-- Footer profesional -->
-            <div style="position: ${isMobile ? 'static' : 'absolute'}; bottom: ${isMobile ? 'auto' : '40px'}; left: ${isMobile ? 'auto' : '40px'}; right: ${isMobile ? 'auto' : '40px'}; margin-top: ${isMobile ? '25px' : '0'}; padding-top: ${isMobile ? '15px' : '30px'}; border-top: 2px solid #e1e8ed; text-align: center; color: #888; font-size: ${isMobile ? '0.65rem' : '0.9rem'};">
+            <div style="position: ${isMobile ? 'static' : 'absolute'}; bottom: ${isMobile ? 'auto' : '40px'}; left: ${isMobile ? 'auto' : '40px'}; right: ${isMobile ? 'auto' : '40px'}; margin-top: ${isMobile ? '25px' : '0'}; padding-top: ${isMobile ? '15px' : '30px'}; border-top: 2px solid #e1e8ed; text-align: center; color: #888; font-size: ${isMobile ? '0.65rem' : '0.9rem'}; background: white; z-index: 2;">
                 <p style="margin: ${isMobile ? '3px 0' : '10px 0'};">Presupuesto generado el ${new Date().toLocaleDateString('es-AR')}</p>
                 <p style="margin: ${isMobile ? '3px 0' : '10px 0'};">Este documento es válido como presupuesto</p>
             </div>
@@ -456,124 +567,132 @@ function generateInvoiceHTML(data, isPreview = false) {
     `;
 }
 
-// Descargar PDF
+// Descargar PDF con paginación usando jsPDF y autoTable
 async function downloadPDF(fromModal = false) {
-    const { jsPDF } = window.jspdf;
-    if (!jsPDF) {
-        alert('Error: No se pudo cargar la librería PDF. Por favor, recarga la página.');
+    if (!window.jsPDF || !window.jsPDF.API || !window.jsPDF.API.autoTable) {
+        alert('Error: Falta la librería autoTable de jsPDF. Asegúrate de que la conexión a internet esté activa y que el CDN no esté bloqueado.');
         return;
     }
-    try {
-        const downloadBtn = fromModal
-            ? document.querySelector('#modal-preview .btn-success')
-            : document.querySelector('.btn-success');
-        const originalText = downloadBtn.textContent;
-        downloadBtn.textContent = 'Generando PDF...';
-        downloadBtn.disabled = true;
-        
-        // Crear un elemento temporal para generar el PDF con formato de escritorio
-        const tempElement = document.createElement('div');
-        tempElement.innerHTML = generateInvoiceHTML(quoteData, false); // false = formato de escritorio
-        tempElement.style.position = 'absolute';
-        tempElement.style.left = '-9999px';
-        tempElement.style.top = '0';
-        document.body.appendChild(tempElement);
-        
-        const canvas = await html2canvas(tempElement, {
-            scale: 2, // Reducir escala para optimizar tamaño
-            useCORS: true,
-            backgroundColor: '#ffffff',
-            logging: false,
-            allowTaint: false,
-            removeContainer: true,
-            letterRendering: true,
-            height: null, // Permitir altura automática
-            width: 800   // Ancho fijo para mantener proporciones
-        });
-        
-        // Eliminar el elemento temporal
-        document.body.removeChild(tempElement);
-        
-        const pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'mm',
-            format: 'a4',
-            compress: true
-        });
-        
-        const pageWidth = 210; // A4 width in mm
-        const pageHeight = 297; // A4 height in mm
-        
-        // Sin márgenes - ocupar toda la página
-        const imgWidth = pageWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-        
-        // Si el contenido es más alto que la página, escalarlo para que quepa exactamente
-        let finalWidth, finalHeight, xOffset, yOffset;
-        
-        if (imgHeight > pageHeight) {
-            // Escalar para que quepa exactamente en la altura de la página
-            finalHeight = pageHeight;
-            finalWidth = (canvas.width * finalHeight) / canvas.height;
-            xOffset = (pageWidth - finalWidth) / 2;
-            yOffset = 0;
-        } else {
-            // Escalar para que ocupe toda la página (puede ser más grande que el contenido original)
-            finalWidth = pageWidth;
-            finalHeight = pageHeight;
-            xOffset = 0;
-            yOffset = 0;
-        }
-        
-        pdf.addImage(
-            canvas.toDataURL('image/png', 1.0),
-            'PNG',
-            xOffset,
-            yOffset,
-            finalWidth,
-            finalHeight,
-            undefined,
-            'FAST'
-        );
-        pdf.setProperties({
-            title: `Presupuesto ${quoteData.invoice.number}`,
-            subject: `Presupuesto para ${quoteData.client.name}`,
-            author: quoteData.company.name,
-            creator: 'Generador de Presupuestos Argentina',
-            producer: 'Generador de Presupuestos Argentina'
-        });
-        const fileName = `Presupuesto_${quoteData.invoice.number}_${quoteData.client.name.replace(/\s+/g, '_')}.pdf`;
-        
-        // Detectar si es móvil para manejar la descarga de manera diferente
-        const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
-        if (isMobileDevice) {
-            // Usar la función auxiliar para manejar descargas en móviles
-            const downloadSuccess = handleMobileDownload(pdf, fileName);
-            if (!downloadSuccess) {
-                // Si todos los métodos fallan, mostrar error
-                downloadBtn.textContent = 'Error en descarga';
-                setTimeout(() => {
-                    downloadBtn.textContent = originalText;
-                }, 3000);
-                return;
-            }
-        } else {
-            // En escritorio, usar el método normal de jsPDF
-            pdf.save(fileName);
-        }
-        
-        downloadBtn.textContent = originalText;
-        downloadBtn.disabled = false;
-    } catch (error) {
-        console.error('Error al generar PDF:', error);
-        alert('Error al generar el PDF. Por favor, intenta de nuevo.');
-        const downloadBtn = fromModal
-            ? document.querySelector('#modal-preview .btn-success')
-            : document.querySelector('.btn-success');
-        downloadBtn.textContent = 'Descargar PDF';
-        downloadBtn.disabled = false;
+    const doc = new window.jsPDF({ unit: 'mm', format: 'a4' });
+    let y = 20;
+
+    // Logo
+    if (quoteData.company.logo) {
+        const imgProps = doc.getImageProperties(quoteData.company.logo);
+        const imgWidth = 50;
+        const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+        doc.addImage(quoteData.company.logo, 'PNG', 20, y, imgWidth, imgHeight);
+        y += imgHeight + 2;
     }
+
+    // Encabezado
+    doc.setFontSize(18);
+    doc.setTextColor('#2c5aa0');
+    doc.text('PRESUPUESTO', 80, 20, { align: 'left' });
+    doc.setFontSize(10);
+    doc.setTextColor('#333');
+    doc.text(`#${quoteData.invoice.number}`, 80, 27);
+    doc.text(`Fecha de Emisión: ${quoteData.invoice.date}`, 80, 33);
+    if (quoteData.invoice.dueDate) doc.text(`Fecha de Vencimiento: ${quoteData.invoice.dueDate}`, 80, 39);
+    y = Math.max(y, 45);
+
+    // Empresa (izquierda)
+    let empresaY = y;
+    let clienteY = y;
+    doc.setFontSize(12);
+    doc.setTextColor('#2c5aa0');
+    doc.text(quoteData.company.name, 20, empresaY);
+    empresaY += 6;
+    if (quoteData.company.slogan) {
+        doc.setFontSize(10);
+        doc.setTextColor('#888');
+        doc.text(quoteData.company.slogan, 20, empresaY);
+        empresaY += 5;
+    }
+    doc.setFontSize(10);
+    doc.setTextColor('#333');
+    if (quoteData.company.email) { doc.text(`Email: ${quoteData.company.email}`, 20, empresaY); empresaY += 5; }
+    if (quoteData.company.phone) { doc.text(`Tel: ${quoteData.company.phone}`, 20, empresaY); empresaY += 5; }
+    if (quoteData.company.taxId) { doc.text(`CUIT: ${quoteData.company.taxId}`, 20, empresaY); empresaY += 5; }
+    if (quoteData.company.address) { doc.text(`Dirección: ${quoteData.company.address}`, 20, empresaY); empresaY += 5; }
+    // Cliente (derecha)
+    if (quoteData.client.name || quoteData.client.email || quoteData.client.phone || quoteData.client.taxId || quoteData.client.address) {
+        doc.setFontSize(11);
+        doc.setTextColor('#2c5aa0');
+        doc.text('PRESUPUESTAR A:', 120, y);
+        clienteY = y + 6;
+        doc.setFontSize(10);
+        doc.setTextColor('#333');
+        if (quoteData.client.name) { doc.text(quoteData.client.name, 120, clienteY); clienteY += 5; }
+        if (quoteData.client.email) { doc.text(`Email: ${quoteData.client.email}`, 120, clienteY); clienteY += 5; }
+        if (quoteData.client.phone) { doc.text(`Tel: ${quoteData.client.phone}`, 120, clienteY); clienteY += 5; }
+        if (quoteData.client.taxId) { doc.text(`CUIT/CUIL/DNI: ${quoteData.client.taxId}`, 120, clienteY); clienteY += 5; }
+        if (quoteData.client.address) { doc.text(`Dirección: ${quoteData.client.address}`, 120, clienteY); clienteY += 5; }
+    }
+    y = Math.max(empresaY, clienteY) + 2;
+
+    // Tabla de artículos con autoTable
+    const columns = [
+        { header: 'Artículo', dataKey: 'description' },
+        { header: 'Cant.', dataKey: 'quantity' },
+        { header: 'Precio', dataKey: 'price' },
+        { header: 'Total', dataKey: 'total' }
+    ];
+    const rows = quoteData.items.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        price: item.price.toLocaleString('es-AR', { minimumFractionDigits: 2 }),
+        total: item.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })
+    }));
+    doc.autoTable({
+        startY: y,
+        head: [columns.map(col => col.header)],
+        body: rows.map(row => columns.map(col => row[col.dataKey])),
+        styles: { fontSize: 10, cellPadding: 2 },
+        headStyles: { fillColor: [44, 90, 160], textColor: 255 },
+        theme: 'grid',
+        margin: { left: 20, right: 20 },
+        didDrawPage: function (data) {
+            // Footer en cada página
+            const pageHeight = doc.internal.pageSize.height;
+            doc.setDrawColor(225, 232, 237);
+            doc.setLineWidth(0.5);
+            doc.line(20, pageHeight - 30, 190, pageHeight - 30);
+            doc.setFontSize(9);
+            doc.setTextColor('#888');
+            doc.text(`Presupuesto generado el ${new Date().toLocaleDateString('es-AR')}`, 105, pageHeight - 22, { align: 'center' });
+            doc.text('Este documento es válido como presupuesto', 105, pageHeight - 15, { align: 'center' });
+        }
+    });
+
+    // Totales
+    let finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(12);
+    doc.setTextColor('#2c5aa0');
+    doc.text('TOTAL:', 140, finalY, { align: 'left' });
+    doc.setFontSize(12);
+    doc.setTextColor('#333');
+    doc.text(`${formatCurrency(quoteData.calculations.total, 'ARS')}`, 190, finalY, { align: 'right' });
+
+    // Notas
+    if (quoteData.notes) {
+        doc.setFontSize(10);
+        doc.setTextColor('#2c5aa0');
+        doc.text('Notas y Términos:', 20, finalY + 10);
+        doc.setFontSize(9);
+        doc.setTextColor('#555');
+        doc.text(quoteData.notes, 20, finalY + 15, { maxWidth: 170 });
+    }
+
+    doc.setProperties({
+        title: `Presupuesto ${quoteData.invoice.number}`,
+        subject: `Presupuesto para ${quoteData.client.name}`,
+        author: quoteData.company.name,
+        creator: 'Generador de Presupuestos Argentina',
+        producer: 'Generador de Presupuestos Argentina'
+    });
+    const fileName = `Presupuesto_${quoteData.invoice.number}_${quoteData.client.name.replace(/\s+/g, '_')}.pdf`;
+    doc.save(fileName);
 }
 
 // Función auxiliar para manejar descargas en dispositivos móviles
